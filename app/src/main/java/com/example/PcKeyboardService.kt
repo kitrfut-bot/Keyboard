@@ -1,6 +1,7 @@
 package com.example
 
 import android.inputmethodservice.InputMethodService
+import android.util.Log
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import androidx.compose.ui.platform.ComposeView
@@ -29,39 +30,61 @@ class PcKeyboardService : InputMethodService(), LifecycleOwner, ViewModelStoreOw
 
     override fun onCreate() {
         super.onCreate()
-        savedStateRegistryController.performRestore(null)
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+        try {
+            savedStateRegistryController.performRestore(null)
+            lifecycleRegistry.currentState = Lifecycle.State.CREATED
+        } catch (e: Exception) {
+            Log.e("PcKeyboardService", "Error in onCreate", e)
+        }
     }
 
     override fun onCreateInputView(): View {
-        val composeView = ComposeView(this).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-            setContent {
-                MyApplicationTheme {
-                    KeyboardView(inputMethodService = this@PcKeyboardService)
+        return try {
+            val composeView = ComposeView(this).apply {
+                setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+                setContent {
+                    MyApplicationTheme {
+                        KeyboardView(inputMethodService = this@PcKeyboardService)
+                    }
                 }
             }
+            composeView.setViewTreeLifecycleOwner(this)
+            composeView.setViewTreeViewModelStoreOwner(this)
+            composeView.setViewTreeSavedStateRegistryOwner(this)
+            
+            lifecycleRegistry.currentState = Lifecycle.State.RESUMED
+            composeView
+        } catch (e: Exception) {
+            Log.e("PcKeyboardService", "Error creating input view", e)
+            View(this)
         }
-        composeView.setViewTreeLifecycleOwner(this)
-        composeView.setViewTreeViewModelStoreOwner(this)
-        composeView.setViewTreeSavedStateRegistryOwner(this)
-        
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
-        
-        return composeView
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
-        // Reset state or handle input type specifics here
+        try {
+            lifecycleRegistry.currentState = Lifecycle.State.RESUMED
+        } catch (e: Exception) {
+            Log.e("PcKeyboardService", "Error in onStartInputView", e)
+        }
+    }
+
+    override fun onFinishInputView(finishingInput: Boolean) {
+        super.onFinishInputView(finishingInput)
+        try {
+            lifecycleRegistry.currentState = Lifecycle.State.STARTED
+        } catch (e: Exception) {
+            Log.e("PcKeyboardService", "Error in onFinishInputView", e)
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
-        store.clear()
+        try {
+            lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
+            store.clear()
+        } catch (e: Exception) {
+            Log.e("PcKeyboardService", "Error in onDestroy", e)
+        }
     }
 }

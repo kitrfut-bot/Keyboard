@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -38,6 +39,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import com.example.ui.theme.MyApplicationTheme
 
 class MainActivity : ComponentActivity() {
@@ -101,8 +110,14 @@ fun MainScreen() {
                 if (!isEnabled) {
                     Button(
                         onClick = {
-                            val intent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
-                            context.startActivity(intent)
+                            try {
+                                val intent = Intent(Settings.ACTION_INPUT_METHOD_SETTINGS).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Log.e("MainActivity", "Error opening IME settings", e)
+                            }
                         },
                         modifier = Modifier.fillMaxWidth().height(56.dp)
                     ) {
@@ -124,8 +139,12 @@ fun MainScreen() {
                 if (isEnabled && !isDefault) {
                     Button(
                         onClick = {
-                            val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                            imm.showInputMethodPicker()
+                            try {
+                                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                                imm?.showInputMethodPicker()
+                            } catch (e: Exception) {
+                                Log.e("MainActivity", "Error opening IME picker", e)
+                            }
                         },
                         modifier = Modifier.fillMaxWidth().height(56.dp)
                     ) {
@@ -160,21 +179,35 @@ fun MainScreen() {
 }
 
 fun checkIfImeEnabled(context: Context): Boolean {
-    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-    val imes = imm.enabledInputMethodList
-    return imes.any { it.packageName == context.packageName }
+    return try {
+        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+        val imes = imm?.enabledInputMethodList ?: emptyList()
+        imes.any { it.packageName == context.packageName }
+    } catch (e: Exception) {
+        false
+    }
 }
 
 fun checkIfImeDefault(context: Context): Boolean {
-    val defaultIme = Settings.Secure.getString(context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
-    return defaultIme?.startsWith(context.packageName) == true
+    return try {
+        val defaultIme = Settings.Secure.getString(context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
+        defaultIme?.startsWith(context.packageName) == true
+    } catch (e: Exception) {
+        false
+    }
 }
 
 @Composable
 fun SettingsList() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val crashLogsState = remember { AppDatabase.getDatabase(context).crashLogDao().getAllCrashLogs() }
+        .collectAsState(initial = emptyList())
+    var showCrashLogs by remember { mutableStateOf(false) }
+
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp)) {
         Text(
-            "Settings", 
+            "Settings & Diagnostics", 
             fontSize = 14.sp, 
             fontWeight = FontWeight.Bold, 
             color = MaterialTheme.colorScheme.primary,
@@ -187,16 +220,109 @@ fun SettingsList() {
         SettingsItem(Icons.Default.VolumeUp, "Sound & Haptic", "Key sounds and vibration")
         SettingsItem(Icons.Default.ContentPaste, "Clipboard", "History and privacy")
         SettingsItem(Icons.Default.Settings, "Advanced", "Gestures, suggestions, and autocorrect")
+        
+        SettingsItem(
+            icon = Icons.Default.BugReport,
+            title = "Crash Logs (${crashLogsState.value.size})",
+            subtitle = if (crashLogsState.value.isEmpty()) "No crashes recorded" else "Tap to inspect crash stack traces",
+            onClick = { showCrashLogs = !showCrashLogs }
+        )
+
+        if (showCrashLogs) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Captured Crash Logs",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (crashLogsState.value.isNotEmpty()) {
+                            IconButton(onClick = {
+                                scope.launch {
+                                    AppDatabase.getDatabase(context).crashLogDao().clearCrashLogs()
+                                }
+                            }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Clear logs", tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+
+                    if (crashLogsState.value.isEmpty()) {
+                        Text(
+                            "Everything running smoothly! No uncaught exceptions captured.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    } else {
+                        val sdf = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
+                        crashLogsState.value.forEach { log ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text(
+                                        text = "${sdf.format(Date(log.timestamp))} • [${log.threadName}]",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = log.throwableName,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                    if (!log.message.isNullOrBlank()) {
+                                        Text(
+                                            text = "Message: ${log.message}",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = log.stackTrace,
+                                        fontSize = 11.sp,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
-fun SettingsItem(icon: ImageVector, title: String, subtitle: String) {
+fun SettingsItem(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit = {}
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .clickable { }
+            .clickable { onClick() }
             .padding(vertical = 16.dp, horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
