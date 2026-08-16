@@ -1,0 +1,6 @@
+{
+  "name": "PC Keyboard",
+  "description": "A production-ready PC-style Android keyboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
