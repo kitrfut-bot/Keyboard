@@ -18,6 +18,12 @@ sealed class KeyAction {
     object Right : KeyAction()
     object Up : KeyAction()
     object Down : KeyAction()
+    object Insert : KeyAction()
+    object DeleteKey : KeyAction()
+    object Home : KeyAction()
+    object End : KeyAction()
+    object PageUp : KeyAction()
+    object PageDown : KeyAction()
 }
 
 data class KeyData(

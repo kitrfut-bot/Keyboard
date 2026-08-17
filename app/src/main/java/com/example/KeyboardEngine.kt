@@ -25,6 +25,9 @@ class KeyboardEngine(private val getService: () -> PcKeyboardService) {
     private val _isMetaActive = MutableStateFlow(false)
     val isMetaActive: StateFlow<Boolean> = _isMetaActive.asStateFlow()
 
+    private val _isFnActive = MutableStateFlow(false)
+    val isFnActive: StateFlow<Boolean> = _isFnActive.asStateFlow()
+
     fun onKeyPress(action: KeyAction) {
         try {
             val service = try { getService() } catch (e: Exception) { null } ?: return
@@ -55,6 +58,9 @@ class KeyboardEngine(private val getService: () -> PcKeyboardService) {
                 KeyAction.Backspace -> {
                     sendKeyChar(ic, KeyEvent.KEYCODE_DEL)
                 }
+                KeyAction.DeleteKey -> {
+                    sendKeyChar(ic, KeyEvent.KEYCODE_FORWARD_DEL)
+                }
                 KeyAction.Enter -> {
                     sendKeyChar(ic, KeyEvent.KEYCODE_ENTER)
                 }
@@ -82,13 +88,28 @@ class KeyboardEngine(private val getService: () -> PcKeyboardService) {
                     _isMetaActive.update { !it }
                 }
                 KeyAction.Fn -> {
-                    // Toggle Fn layer
+                    _isFnActive.update { !it }
                 }
                 KeyAction.Tab -> {
                     sendKeyChar(ic, KeyEvent.KEYCODE_TAB)
                 }
                 KeyAction.Esc -> {
                     sendKeyChar(ic, KeyEvent.KEYCODE_ESCAPE)
+                }
+                KeyAction.Insert -> {
+                    sendKeyChar(ic, KeyEvent.KEYCODE_INSERT)
+                }
+                KeyAction.Home -> {
+                    sendKeyChar(ic, KeyEvent.KEYCODE_MOVE_HOME)
+                }
+                KeyAction.End -> {
+                    sendKeyChar(ic, KeyEvent.KEYCODE_MOVE_END)
+                }
+                KeyAction.PageUp -> {
+                    sendKeyChar(ic, KeyEvent.KEYCODE_PAGE_UP)
+                }
+                KeyAction.PageDown -> {
+                    sendKeyChar(ic, KeyEvent.KEYCODE_PAGE_DOWN)
                 }
                 KeyAction.Left -> {
                     sendKeyChar(ic, KeyEvent.KEYCODE_DPAD_LEFT)
@@ -115,12 +136,50 @@ class KeyboardEngine(private val getService: () -> PcKeyboardService) {
                 "c" -> ic.performContextMenuAction(android.R.id.copy)
                 "v" -> ic.performContextMenuAction(android.R.id.paste)
                 "x" -> ic.performContextMenuAction(android.R.id.cut)
+                "z" -> ic.performContextMenuAction(android.R.id.undo)
+                "y" -> ic.performContextMenuAction(android.R.id.redo)
                 else -> {}
             }
         } catch (e: Exception) {
             Log.e("KeyboardEngine", "Error handling shortcut", e)
         }
         _isCtrlActive.update { false }
+    }
+
+    fun executeQuickAction(actionType: String) {
+        try {
+            val service = try { getService() } catch (e: Exception) { null } ?: return
+            val ic = service.currentInputConnection ?: return
+
+            when (actionType) {
+                "copy" -> ic.performContextMenuAction(android.R.id.copy)
+                "paste" -> ic.performContextMenuAction(android.R.id.paste)
+                "cut" -> ic.performContextMenuAction(android.R.id.cut)
+                "selectAll" -> ic.performContextMenuAction(android.R.id.selectAll)
+                "undo" -> {
+                    if (!ic.performContextMenuAction(android.R.id.undo)) {
+                        sendKeyChar(ic, KeyEvent.KEYCODE_Z)
+                    }
+                }
+                "redo" -> {
+                    if (!ic.performContextMenuAction(android.R.id.redo)) {
+                        sendKeyChar(ic, KeyEvent.KEYCODE_Y)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("KeyboardEngine", "Error executing quick action $actionType", e)
+        }
+    }
+
+    fun pasteText(text: String) {
+        try {
+            val service = try { getService() } catch (e: Exception) { null } ?: return
+            val ic = service.currentInputConnection ?: return
+            ic.commitText(text, 1)
+        } catch (e: Exception) {
+            Log.e("KeyboardEngine", "Error pasting text", e)
+        }
     }
 
     private fun sendKeyChar(ic: InputConnection, keyCode: Int) {
