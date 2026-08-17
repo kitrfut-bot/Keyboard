@@ -28,41 +28,53 @@ class PcKeyboardService : InputMethodService(), LifecycleOwner, ViewModelStoreOw
     override val viewModelStore: ViewModelStore get() = store
     override val savedStateRegistry: SavedStateRegistry get() = savedStateRegistryController.savedStateRegistry
 
+    private fun installViewTreeOwners() {
+        try {
+            window?.window?.decorView?.let { decorView ->
+                decorView.setViewTreeLifecycleOwner(this)
+                decorView.setViewTreeViewModelStoreOwner(this)
+                decorView.setViewTreeSavedStateRegistryOwner(this)
+            }
+        } catch (e: Exception) {
+            Log.e("PcKeyboardService", "Error installing view tree owners on decorView", e)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         try {
             savedStateRegistryController.performRestore(null)
             lifecycleRegistry.currentState = Lifecycle.State.CREATED
+            installViewTreeOwners()
         } catch (e: Exception) {
             Log.e("PcKeyboardService", "Error in onCreate", e)
         }
     }
 
     override fun onCreateInputView(): View {
-        return try {
-            val composeView = ComposeView(this).apply {
-                setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-                setContent {
-                    MyApplicationTheme {
-                        KeyboardView(inputMethodService = this@PcKeyboardService)
-                    }
+        installViewTreeOwners()
+
+        val composeView = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setViewTreeLifecycleOwner(this@PcKeyboardService)
+            setViewTreeViewModelStoreOwner(this@PcKeyboardService)
+            setViewTreeSavedStateRegistryOwner(this@PcKeyboardService)
+            
+            setContent {
+                MyApplicationTheme {
+                    KeyboardView(inputMethodService = this@PcKeyboardService)
                 }
             }
-            composeView.setViewTreeLifecycleOwner(this)
-            composeView.setViewTreeViewModelStoreOwner(this)
-            composeView.setViewTreeSavedStateRegistryOwner(this)
-            
-            lifecycleRegistry.currentState = Lifecycle.State.RESUMED
-            composeView
-        } catch (e: Exception) {
-            Log.e("PcKeyboardService", "Error creating input view", e)
-            View(this)
         }
+
+        installViewTreeOwners()
+        return composeView
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         try {
+            installViewTreeOwners()
             lifecycleRegistry.currentState = Lifecycle.State.RESUMED
         } catch (e: Exception) {
             Log.e("PcKeyboardService", "Error in onStartInputView", e)
@@ -88,3 +100,4 @@ class PcKeyboardService : InputMethodService(), LifecycleOwner, ViewModelStoreOw
         }
     }
 }
+
